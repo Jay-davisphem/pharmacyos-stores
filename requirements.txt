@@ -1,0 +1,11 @@
+fastapi
+httpx
+pybars3
+uvicorn[standard]
+sqlalchemy>=2.0
+asyncpg
+alembic
+pydantic-settings
+pydantic[email]
+python-dotenv
+orjson

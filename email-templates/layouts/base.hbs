@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta name="viewport" content="width=device-width">
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>PharmacyOS</title>
+</head>
+
+<body
+  style="background-color: #ffffff; font-family: sans-serif; -webkit-font-smoothing: antialiased; font-size: 14px; line-height: 1.4; margin: 0; padding: 0; -ms-text-size-adjust: 100%; -webkit-text-size-adjust: 100%;">
+  <table role="presentation" border="0" cellpadding="0" cellspacing="0" class="body"
+    style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; min-width: 100%; background-color: #ffffff; width: 100%;"
+    width="100%" bgcolor="#ffffff">
+    <tr>
+      <td style="font-family: sans-serif; font-size: 14px; vertical-align: top;" valign="top">&nbsp;</td>
+      <td class="container"
+        style="font-family: sans-serif; font-size: 14px; vertical-align: top; display: block; max-width: 580px; padding: 10px; width: 580px; margin: 0 auto;"
+        width="580" valign="top">
+
+        {{> header}}
+
+        <div style="box-sizing: border-box; display: block; margin: 0 auto; max-width: 580px; padding: 10px;">
+          <table role="presentation" class="main"
+            style="border-collapse: separate; mso-table-lspace: 0pt; mso-table-rspace: 0pt; min-width: 100%; background: #ffffff; border-radius: 3px; width: 100%;"
+            width="100%">
+
+            <!-- START MAIN CONTENT AREA -->
+            <tr>
+              <td
+                style="font-family: sans-serif; font-size: 14px; vertical-align: top; box-sizing: border-box; padding: 20px;"
+                valign="top">
+                {{{body}}}
+              </td>
+            </tr>
+            <!-- END MAIN CONTENT AREA -->
+          </table>
+
+          {{> footer}}
+
+        </div>
+      </td>
+      <td style="font-family: sans-serif; font-size: 14px; vertical-align: top;" valign="top">&nbsp;</td>
+    </tr>
+  </table>
+</body>
+
+</html>
