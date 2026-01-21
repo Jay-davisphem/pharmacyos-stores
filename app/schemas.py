@@ -17,6 +17,11 @@ class ClientRegistrationRequest(BaseModel):
         description="Organization name displayed in emails.",
         json_schema_extra={"example": "PharmacyOS"},
     )
+    distributor_id: str = Field(
+        ...,
+        description="Distributor identifier from the main system.",
+        json_schema_extra={"example": "dist_12345"},
+    )
     password: str = Field(
         min_length=8,
         max_length=128,
@@ -28,6 +33,7 @@ class ClientRegistrationRequest(BaseModel):
 class ClientRegistrationResponse(BaseModel):
     client_id: uuid.UUID = Field(..., description="Organization identifier.")
     api_key: str = Field(..., description="API key used for /v1/bulk-ingest.")
+    distributor_id: str = Field(..., description="Distributor identifier linked to the org.")
 
 
 class TokenRequest(BaseModel):
@@ -46,6 +52,25 @@ class TokenRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str = Field(..., description="Bearer token for automation endpoints.")
     token_type: str = Field("bearer", description="Token type, always 'bearer'.")
+    distributor_id: str = Field(..., description="Distributor identifier linked to the org.")
+
+
+class ApiKeyResetRequest(BaseModel):
+    email: EmailStr = Field(
+        ...,
+        description="Organization admin email.",
+        json_schema_extra={"example": "admin@usepharmacyos.com"},
+    )
+    password: str = Field(
+        ...,
+        description="Password set at registration.",
+        json_schema_extra={"example": "StrongPass123"},
+    )
+
+
+class ApiKeyResetResponse(BaseModel):
+    api_key: str = Field(..., description="New API key for /v1/bulk-ingest.")
+    distributor_id: str = Field(..., description="Distributor identifier linked to the org.")
 
 
 class PasswordResetRequest(BaseModel):

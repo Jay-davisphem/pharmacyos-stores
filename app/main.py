@@ -1,8 +1,11 @@
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
+import re
 
 from fastapi import Body, Depends, FastAPI, HTTPException, Query, status
 from fastapi.responses import ORJSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,12 +29,15 @@ from app.crud import (
     create_password_reset_token,
     fetch_automation_batch,
     mark_reset_token_used,
+    update_api_key,
 )
 from app.db import create_engine, create_sessionmaker, get_db_session
 from app.email_service import EmailService
 from app.rate_limit import RateLimiter
 from app.models import ApiClient, Base, PasswordResetToken
 from app.schemas import (
+    ApiKeyResetRequest,
+    ApiKeyResetResponse,
     AutomationBatchResponse,
     BulkIngestResponse,
     ClientRegistrationRequest,
@@ -75,6 +81,13 @@ def create_app(
         openapi_tags=tags_metadata,
         lifespan=lifespan,
     )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origin_regex=settings.allowed_origin_regex,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     engine = engine or create_engine(settings.database_url)
     sessionmaker = sessionmaker or create_sessionmaker(engine)
     app.state.engine = engine
@@ -93,6 +106,33 @@ def create_app(
 
         return await call_next(request)
 
+    @app.middleware("http")
+    async def origin_guard_middleware(request, call_next):
+        if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
+            return await call_next(request)
+        if request.url.path == "/v1/bulk-ingest":
+            return await call_next(request)
+
+        origin = request.headers.get("origin")
+        if origin:
+            if not re.match(settings.allowed_origin_regex, origin):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Origin not allowed")
+
+        return await call_next(request)
+
+    @app.middleware("http")
+    async def host_guard_middleware(request, call_next):
+        if request.url.path.startswith("/docs") or request.url.path.startswith("/openapi"):
+            return await call_next(request)
+        if request.url.path == "/v1/bulk-ingest":
+            return await call_next(request)
+
+        host = request.headers.get("host")
+        if host and not re.match(r".*\.usepharmacyos\.com$", host):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Host not allowed")
+
+        return await call_next(request)
+
     @app.post(
         "/v1/clients/register",
         response_model=ClientRegistrationResponse,
@@ -107,7 +147,11 @@ def create_app(
                 "description": "Organization registered.",
                 "content": {
                     "application/json": {
-                        "example": {"client_id": "uuid", "api_key": "sk_example"}
+                        "example": {
+                            "client_id": "uuid",
+                            "api_key": "sk_example",
+                            "distributor_id": "dist_12345",
+                        }
                     }
                 },
             }
@@ -122,6 +166,7 @@ def create_app(
                     "value": {
                         "email": "admin@usepharmacyos.com",
                         "org_name": "PharmacyOS",
+                        "distributor_id": "dist_12345",
                         "password": "StrongPass123",
                     },
                 }
@@ -136,6 +181,7 @@ def create_app(
                 session,
                 email=payload.email,
                 org_name=payload.org_name,
+                distributor_id=payload.distributor_id,
                 api_key_hash=hash_api_key(api_key),
                 api_key_sha=api_key_sha(api_key),
                 password_hash=hash_password(payload.password, password_salt),
@@ -144,7 +190,11 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
-        return ClientRegistrationResponse(client_id=client.id, api_key=api_key)
+        return ClientRegistrationResponse(
+            client_id=client.id,
+            api_key=api_key,
+            distributor_id=client.distributor_id,
+        )
 
     @app.post(
         "/v1/auth/token",
@@ -157,7 +207,11 @@ def create_app(
                 "description": "Token issued.",
                 "content": {
                     "application/json": {
-                        "example": {"access_token": "token_example", "token_type": "bearer"}
+                        "example": {
+                            "access_token": "token_example",
+                            "token_type": "bearer",
+                            "distributor_id": "dist_12345",
+                        }
                     }
                 },
             }
@@ -182,9 +236,80 @@ def create_app(
         if not client or not verify_password(payload.password, client.password_salt, client.password_hash):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
+        if client.last_api_key_reset_at:
+            last_reset = client.last_api_key_reset_at
+            if last_reset.tzinfo is None:
+                last_reset = last_reset.replace(tzinfo=UTC)
+            elapsed = (datetime.now(UTC) - last_reset).total_seconds()
+            cooldown = settings.api_key_reset_cooldown_minutes * 60
+            if elapsed < cooldown:
+                retry_after = int(cooldown - elapsed)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="API key reset cooldown active",
+                    headers={"Retry-After": str(retry_after)},
+                )
+
         access_token = generate_access_token()
         await create_access_token(session, client.id, token_sha(access_token))
-        return TokenResponse(access_token=access_token)
+        return TokenResponse(access_token=access_token, distributor_id=client.distributor_id)
+
+    @app.post(
+        "/v1/auth/api-key/reset",
+        response_model=ApiKeyResetResponse,
+        tags=["Auth"],
+        summary="Reset API key",
+        description="Regenerates the API key for bulk ingestion using email/password.",
+        responses={
+            200: {
+                "description": "API key rotated.",
+                "content": {
+                    "application/json": {
+                        "example": {"api_key": "sk_new", "distributor_id": "dist_12345"}
+                    }
+                },
+            }
+        },
+    )
+    async def reset_api_key(
+        payload: ApiKeyResetRequest = Body(
+            ...,
+            examples={
+                "default": {
+                    "summary": "Reset API key",
+                    "value": {
+                        "email": "admin@usepharmacyos.com",
+                        "password": "StrongPass123",
+                    },
+                }
+            },
+        ),
+        session: AsyncSession = Depends(get_db_session),
+    ) -> ApiKeyResetResponse:
+        result = await session.execute(
+            select(ApiClient).where(ApiClient.email == payload.email)
+        )
+        client = result.scalar_one_or_none()
+        if not client or not verify_password(payload.password, client.password_salt, client.password_hash):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+        if client.last_api_key_reset_at:
+            last_reset = client.last_api_key_reset_at
+            if last_reset.tzinfo is None:
+                last_reset = last_reset.replace(tzinfo=UTC)
+            elapsed = (datetime.now(UTC) - last_reset).total_seconds()
+            cooldown = settings.api_key_reset_cooldown_minutes * 60
+            if elapsed < cooldown:
+                retry_after = int(cooldown - elapsed)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="API key reset cooldown active",
+                    headers={"Retry-After": str(retry_after)},
+                )
+
+        new_api_key = generate_api_key(settings)
+        await update_api_key(session, client, hash_api_key(new_api_key), api_key_sha(new_api_key))
+        return ApiKeyResetResponse(api_key=new_api_key, distributor_id=client.distributor_id)
 
     @app.post(
         "/v1/auth/password-reset/request",

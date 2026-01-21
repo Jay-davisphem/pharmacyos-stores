@@ -16,11 +16,13 @@ class ApiClient(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     org_name: Mapped[str] = mapped_column(String(255))
+    distributor_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     api_key_hash: Mapped[str] = mapped_column(String(255))
     api_key_sha: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     password_salt: Mapped[str] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    last_api_key_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     items: Mapped[list["StoreItem"]] = relationship(back_populates="api_client")
     tokens: Mapped[list["AccessToken"]] = relationship(back_populates="api_client")

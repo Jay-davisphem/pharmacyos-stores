@@ -11,6 +11,7 @@ async def test_automation_batch(client):
         json={
             "email": email,
             "org_name": "Auto Org",
+            "distributor_id": "dist_auto",
             "password": "StrongPass123",
         },
     )
@@ -21,6 +22,7 @@ async def test_automation_batch(client):
         json={"email": email, "password": "StrongPass123"},
     )
     assert token_response.status_code == 200
+    assert token_response.json()["distributor_id"] == "dist_auto"
     access_token = token_response.json()["access_token"]
 
     payload = [

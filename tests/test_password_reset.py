@@ -11,7 +11,12 @@ async def test_password_reset_flow(client):
 
     register = await client.post(
         "/v1/clients/register",
-        json={"email": email, "org_name": "Reset Org", "password": password},
+        json={
+            "email": email,
+            "org_name": "Reset Org",
+            "distributor_id": "dist_reset",
+            "password": password,
+        },
     )
     assert register.status_code == 200
 

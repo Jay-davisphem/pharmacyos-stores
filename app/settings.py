@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     reset_token_debug: bool = False
     rate_limit_requests: int = 300
     rate_limit_window_seconds: int = 60
+    api_key_reset_cooldown_minutes: int = 30
+    allowed_origin_regex: str = r"^https?://([a-zA-Z0-9-]+\.)*usepharmacyos\.com$"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 

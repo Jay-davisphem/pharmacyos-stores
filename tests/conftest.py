@@ -29,6 +29,7 @@ def test_settings(tmp_path):
         max_batch_size=1000,
         email_provider="console",
         reset_token_debug=True,
+        api_key_reset_cooldown_minutes=60,
     )
 
 
@@ -53,5 +54,5 @@ async def client(test_settings, engine):
     sessionmaker = create_sessionmaker(engine)
     app = create_app(test_settings, engine=engine, sessionmaker=sessionmaker)
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
+    async with AsyncClient(transport=transport, base_url="http://app.usepharmacyos.com") as client:
         yield client

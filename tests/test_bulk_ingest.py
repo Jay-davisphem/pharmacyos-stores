@@ -10,6 +10,7 @@ async def test_bulk_ingest(client):
         json={
             "email": f"bulk-{uuid.uuid4()}@example.com",
             "org_name": "Bulk Org",
+            "distributor_id": "dist_bulk",
             "password": "StrongPass123",
         },
     )

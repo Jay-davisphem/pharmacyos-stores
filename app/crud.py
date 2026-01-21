@@ -13,6 +13,7 @@ async def create_api_client(
     session: AsyncSession,
     email: str,
     org_name: str,
+    distributor_id: str,
     api_key_hash: str,
     api_key_sha: str,
     password_hash: str,
@@ -21,9 +22,15 @@ async def create_api_client(
     existing = await session.execute(select(ApiClient).where(ApiClient.email == email))
     if existing.scalar_one_or_none():
         raise ValueError("Email already registered")
+    existing_distributor = await session.execute(
+        select(ApiClient).where(ApiClient.distributor_id == distributor_id)
+    )
+    if existing_distributor.scalar_one_or_none():
+        raise ValueError("Distributor ID already registered")
     client = ApiClient(
         email=email,
         org_name=org_name,
+        distributor_id=distributor_id,
         api_key_hash=api_key_hash,
         api_key_sha=api_key_sha,
         password_hash=password_hash,
@@ -45,6 +52,18 @@ async def create_access_token(
     await session.commit()
     await session.refresh(token)
     return token
+
+
+async def update_api_key(
+    session: AsyncSession,
+    client: ApiClient,
+    api_key_hash: str,
+    api_key_sha: str,
+) -> None:
+    client.api_key_hash = api_key_hash
+    client.api_key_sha = api_key_sha
+    client.last_api_key_reset_at = datetime.now(UTC)
+    await session.commit()
 
 
 async def create_password_reset_token(

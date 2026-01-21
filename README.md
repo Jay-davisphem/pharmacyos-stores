@@ -22,11 +22,14 @@ Set environment variables (see `.env.example`):
 - `RESET_TOKEN_DEBUG` (optional: return reset token in API response)
 - `RATE_LIMIT_REQUESTS`
 - `RATE_LIMIT_WINDOW_SECONDS`
+- `API_KEY_RESET_COOLDOWN_MINUTES`
+- `ALLOWED_ORIGIN_REGEX` (optional override for origin guard)
 
 ## API endpoints
 
-- `POST /v1/clients/register` — register (email, org, password) and receive API key
-- `POST /v1/auth/token` — exchange email/password for bearer token
+- `POST /v1/clients/register` — register (email, org, distributor_id, password) and receive API key
+- `POST /v1/auth/token` — exchange email/password for bearer token (returns distributor_id)
+- `POST /v1/auth/api-key/reset` — rotate API key (email/password)
 - `POST /v1/auth/password-reset/request` — request a reset token (email)
 - `POST /v1/auth/password-reset/confirm` — confirm reset with token and new password
 - `POST /v1/bulk-ingest` — bulk upsert with `X-API-Key`
