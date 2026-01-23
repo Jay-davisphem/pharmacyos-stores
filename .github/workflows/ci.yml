@@ -65,7 +65,7 @@ jobs:
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
         run: |
-          python -m pytest -v --tb=short
+          pytest -v --tb=short
 
       - name: Upload coverage reports
         if: always()
