@@ -5,12 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 
 def create_engine(database_url: str) -> AsyncEngine:
-    return create_async_engine(
-        database_url,
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
-    )
+    # SQLite doesn't support pool_size and max_overflow
+    engine_kwargs = {"pool_pre_ping": True}
+    if "sqlite" not in database_url.lower():
+        engine_kwargs.update({"pool_size": 5, "max_overflow": 10})
+    
+    return create_async_engine(database_url, **engine_kwargs)
 
 
 def create_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
