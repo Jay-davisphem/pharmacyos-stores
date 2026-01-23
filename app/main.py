@@ -404,27 +404,141 @@ def create_app(
         "/v1/bulk-ingest",
         response_model=BulkIngestResponse,
         tags=["Ingest"],
-        summary="Bulk ingest data",
+        summary="Bulk ingest and upsert items with automatic field detection",
         description=(
-            "Ingests a list of JSON objects. Requires header X-API-Key with the API key from registration. "
-            "Objects are upserted based on all fields except price and quantity."
+            "Ingests a list of JSON objects with automatic AI-powered field detection.\n\n"
+            "**Key Features:**\n"
+            "- **Automatic Field Detection:** On the first ingest for an organization, the API uses Google Gemini AI "
+            "to automatically detect which fields represent `quantity` and `price`, even when named differently "
+            "(e.g., `quantity_available`, `unit_price`, `stock`, `cost`).\n"
+            "- **Mapping Reuse:** The detected field mapping is stored in the database and reused for all subsequent "
+            "ingests for the same organization, eliminating AI overhead after the first request.\n"
+            "- **Smart Upsert:** Objects are deduplicated and upserted based on all fields except `price` and `quantity`. "
+            "When a matching object is found (all fields except price/quantity match), the existing record is updated with "
+            "new price and quantity values.\n"
+            "- **Flexible Schema:** Send data with any field names - the API automatically identifies and normalizes them.\n\n"
+            "**Authentication:**\n"
+            "- Requires header: `X-API-Key: <api_key_from_registration>`\n\n"
+            "**Field Detection Behavior:**\n"
+            "1. **First Request:** AI analyzes the first object in the batch, detects quantity and price fields, "
+            "stores the mapping.\n"
+            "2. **Subsequent Requests:** Uses stored mapping (no AI call, faster).\n"
+            "3. **Graceful Fallback:** If detection fails or AI is unavailable, processing continues with null field mappings.\n\n"
+            "**Similarity Rule:**\n"
+            "Two objects are considered the same if all their top-level fields match EXCEPT price and quantity. "
+            "When a duplicate is detected, only price and quantity fields are updated; other fields remain unchanged.\n\n"
+            "**Rate Limiting:**\n"
+            "- 300 requests per 60 seconds per API key and IP address.\n\n"
+            "**Batch Size Limit:**\n"
+            f"- Maximum {settings.max_batch_size} items per request."
         ),
         responses={
             200: {
-                "description": "Batch processed.",
-                "content": {"application/json": {"example": {"processed": 2}}},
-            }
+                "description": "Batch successfully processed.",
+                "content": {
+                    "application/json": {
+                        "example": {"processed": 2}
+                    }
+                },
+            },
+            401: {
+                "description": "Unauthorized - Missing or invalid X-API-Key header.",
+                "content": {
+                    "application/json": {
+                        "example": {"detail": "Unauthorized"}
+                    }
+                },
+            },
+            413: {
+                "description": "Payload Too Large - Batch exceeds max_batch_size limit.",
+                "content": {
+                    "application/json": {
+                        "example": {"detail": "Batch size exceeds limit"}
+                    }
+                },
+            },
         },
     )
     async def bulk_ingest(
         items: list[dict[str, Any]] = Body(
             ...,
             examples={
-                "default": {
-                    "summary": "Bulk payload",
+                "standard_fields": {
+                    "summary": "Standard field names (price, quantity)",
+                    "description": "First request for an organization with standard field names. "
+                    "AI will detect quantity_field='quantity' and price_field='price'.",
                     "value": [
-                        {"sku": "SKU-1", "price": 10.5, "quantity": 2, "date": "2026-01-21"},
-                        {"sku": "SKU-2", "price": 15.0, "quantity": 1, "date": "2026-01-21"},
+                        {
+                            "sku": "SKU-001",
+                            "price": 19.99,
+                            "quantity": 50,
+                            "category": "pain relief",
+                            "date": "2026-01-23"
+                        },
+                        {
+                            "sku": "SKU-002",
+                            "price": 24.99,
+                            "quantity": 30,
+                            "category": "vitamins",
+                            "date": "2026-01-23"
+                        }
+                    ],
+                },
+                "non_standard_fields": {
+                    "summary": "Non-standard field names (unit_price, quantity_available)",
+                    "description": "First request with alternative field names. "
+                    "AI will detect quantity_field='quantity_available' and price_field='unit_price'. "
+                    "Subsequent requests with same org can use any field name - the mapping is reused.",
+                    "value": [
+                        {
+                            "sku": "PROD-101",
+                            "unit_price": 49.99,
+                            "quantity_available": 15,
+                            "stock_status": "in stock",
+                            "supplier": "Supplier A"
+                        },
+                        {
+                            "sku": "PROD-102",
+                            "unit_price": 34.99,
+                            "quantity_available": 42,
+                            "stock_status": "in stock",
+                            "supplier": "Supplier B"
+                        }
+                    ],
+                },
+                "update_existing": {
+                    "summary": "Update existing items (upsert)",
+                    "description": "Sending duplicate SKU with updated price/quantity. "
+                    "Matches existing record by all fields except price/quantity, then updates those fields.",
+                    "value": [
+                        {
+                            "sku": "SKU-001",
+                            "price": 17.99,
+                            "quantity": 60,
+                            "category": "pain relief",
+                            "date": "2026-01-23"
+                        }
+                    ],
+                },
+                "varied_fields": {
+                    "summary": "Custom field names with mixed naming",
+                    "description": "Real-world example with completely custom field names. "
+                    "AI intelligently identifies cost as price and stock as quantity.",
+                    "value": [
+                        {
+                            "product_id": "P001",
+                            "cost": 5.50,
+                            "stock": 200,
+                            "supplier": "Supplier A",
+                            "warehouse": "NYC"
+                        },
+                        {
+                            "product_id": "P002",
+                            "cost": 7.25,
+                            "stock": 150,
+                            "supplier": "Supplier B",
+                            "warehouse": "LA"
+                        }
                     ],
                 }
             },
