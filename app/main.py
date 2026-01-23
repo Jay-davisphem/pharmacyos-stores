@@ -26,8 +26,10 @@ from app.crud import (
     bulk_upsert_items,
     create_access_token,
     create_api_client,
+    create_field_mapping,
     create_password_reset_token,
     fetch_automation_batch,
+    get_field_mapping,
     mark_reset_token_used,
     update_api_key,
 )
@@ -435,7 +437,66 @@ def create_app(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail="Batch size exceeds limit",
             )
-        processed = await bulk_upsert_items(session, client.id, items)
+        
+        # Get or detect field mapping for this organization
+        field_mapping = await get_field_mapping(session, client.id)
+        
+        if not field_mapping:
+            # First ingest: detect fields from first object using AI
+            quantity_field = None
+            price_field = None
+            
+            if items and settings.gemini_api_key:
+                # Use Gemini to detect field names
+                from google import genai
+                import json
+                
+                try:
+                    client_gemini = genai.Client(api_key=settings.gemini_api_key)
+                    sample = items[0]
+                    
+                    prompt = f"""
+Identify which fields represent quantity and price in this retail data.
+Data: {json.dumps(sample, indent=2)}
+
+Return JSON with exactly this structure:
+{{
+  "quantity_field": "<field_name_or_null>",
+  "price_field": "<field_name_or_null>"
+}}
+
+Only return the JSON, no other text.
+"""
+                    response = client_gemini.models.generate_content(
+                        model=settings.gemini_model,
+                        contents=prompt,
+                    )
+                    result_text = response.text.strip()
+                    if result_text.startswith("```json"):
+                        result_text = result_text[7:]
+                    if result_text.startswith("```"):
+                        result_text = result_text[3:]
+                    if result_text.endswith("```"):
+                        result_text = result_text[:-3]
+                    
+                    detection = json.loads(result_text)
+                    quantity_field = detection.get("quantity_field")
+                    price_field = detection.get("price_field")
+                except Exception:
+                    # Graceful fallback if detection fails
+                    pass
+            
+            # Store the detected (or null) mapping
+            await create_field_mapping(session, client.id, quantity_field, price_field)
+        else:
+            # Reuse stored mapping
+            quantity_field = field_mapping.quantity_field
+            price_field = field_mapping.price_field
+        
+        # Ingest using detected fields
+        processed = await bulk_upsert_items(
+            session, client.id, items, quantity_field=quantity_field, price_field=price_field
+        )
         return BulkIngestResponse(processed=processed)
 
     @app.get(

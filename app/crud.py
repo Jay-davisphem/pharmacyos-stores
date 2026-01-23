@@ -5,7 +5,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AccessToken, ApiClient, PasswordResetToken, StoreItem
+from app.models import AccessToken, ApiClient, FieldMapping, PasswordResetToken, StoreItem
 from app.utils import compute_fingerprint, extract_number
 
 
@@ -101,6 +101,8 @@ async def bulk_upsert_items(
     session: AsyncSession,
     api_client_id,
     payloads: list[dict[str, Any]],
+    quantity_field: str | None = None,
+    price_field: str | None = None,
 ) -> int:
     rows = []
     now = datetime.now(UTC)
@@ -111,8 +113,8 @@ async def bulk_upsert_items(
                 "api_client_id": api_client_id,
                 "fingerprint": fingerprint,
                 "data": payload,
-                "price": extract_number(payload, "price"),
-                "quantity": extract_number(payload, "quantity"),
+                "price": extract_number(payload, price_field or "price"),
+                "quantity": extract_number(payload, quantity_field or "quantity"),
                 "updated_at": now,
                 "created_at": now,
                 "is_exported": False,
@@ -189,3 +191,45 @@ async def fetch_automation_batch(
     )
     await session.commit()
     return items
+
+
+async def get_field_mapping(session: AsyncSession, api_client_id) -> FieldMapping | None:
+    """Get stored field mapping for an organization."""
+    result = await session.execute(
+        select(FieldMapping).where(FieldMapping.api_client_id == api_client_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def create_field_mapping(
+    session: AsyncSession,
+    api_client_id,
+    quantity_field: str | None,
+    price_field: str | None,
+) -> FieldMapping:
+    """Store detected field mapping for an organization."""
+    # Delete old mapping if exists
+    await session.execute(
+        update(FieldMapping).where(FieldMapping.api_client_id == api_client_id).values(
+            quantity_field=quantity_field, price_field=price_field, detected_at=datetime.now(UTC)
+        )
+    )
+    
+    # Check if update affected anything
+    result = await session.execute(
+        select(FieldMapping).where(FieldMapping.api_client_id == api_client_id)
+    )
+    mapping = result.scalar_one_or_none()
+    
+    if not mapping:
+        # Create new if doesn't exist
+        mapping = FieldMapping(
+            api_client_id=api_client_id,
+            quantity_field=quantity_field,
+            price_field=price_field,
+        )
+        session.add(mapping)
+    
+    await session.commit()
+    await session.refresh(mapping)
+    return mapping

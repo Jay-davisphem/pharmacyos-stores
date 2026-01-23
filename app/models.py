@@ -70,3 +70,18 @@ class PasswordResetToken(Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     api_client: Mapped[ApiClient] = relationship(back_populates="reset_tokens")
+
+
+class FieldMapping(Base):
+    __tablename__ = "field_mappings"
+    __table_args__ = (
+        UniqueConstraint("api_client_id", name="uq_field_mapping_per_client"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    api_client_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("api_clients.id"), index=True)
+    quantity_field: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    price_field: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    api_client: Mapped[ApiClient] = relationship()

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     rate_limit_window_seconds: int = 60
     api_key_reset_cooldown_minutes: int = 30
     allowed_origin_regex: str = r"^https?://([a-zA-Z0-9-]+\.)*usepharmacyos\.com$"
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-2.5-flash-lite"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="", extra="ignore")
 
