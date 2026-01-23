@@ -64,6 +64,8 @@ jobs:
       - name: Run tests with pytest
         env:
           DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
         run: |
           python -m pytest
 
