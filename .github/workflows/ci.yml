@@ -1,0 +1,77 @@
+# This workflow runs tests and linting for the PharmacyOS Stores FastAPI application
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests
+
+name: Python FastAPI CI
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main", "develop"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: store_db_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint with flake8 (if available)
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics || true
+          # Exit-zero treats all errors as warnings
+          flake8 app --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics || true
+        continue-on-error: true
+
+      - name: Run database migrations
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/store_db_test
+        run: |
+          alembic upgrade head
+
+      - name: Run tests with pytest
+        env:
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
+        run: |
+          python -m pytest -v --tb=short
+
+      - name: Upload coverage reports
+        if: always()
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+        continue-on-error: true

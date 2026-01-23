@@ -1,0 +1,6 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/" # Location of Python package manifests (e.g., requirements.txt) inside .venv
+    schedule:
+      interval: "weekly"
