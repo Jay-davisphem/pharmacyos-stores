@@ -107,7 +107,11 @@ async def bulk_upsert_items(
     rows = []
     now = datetime.now(UTC)
     for payload in payloads:
-        fingerprint = compute_fingerprint(payload)
+        # Skip invalid payloads (empty or missing required fields)
+        if not payload or not isinstance(payload, dict):
+            continue
+        
+        fingerprint = compute_fingerprint(payload, price_field, quantity_field)
         rows.append(
             {
                 "api_client_id": api_client_id,
@@ -121,6 +125,9 @@ async def bulk_upsert_items(
                 "exported_at": None,
             }
         )
+
+    if not rows:
+        return 0
 
     if session.bind.dialect.name == "postgresql":
         stmt = pg_insert(StoreItem).values(rows)
