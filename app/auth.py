@@ -56,7 +56,10 @@ def token_sha(token: str) -> str:
 
 
 def generate_reset_token() -> str:
-    return secrets.token_urlsafe(32)
+    """Generate an 8-character alphanumeric reset token (user-friendly)."""
+    import string
+    chars = string.ascii_uppercase + string.digits
+    return ''.join(secrets.choice(chars) for _ in range(8))
 
 
 async def get_api_client(
